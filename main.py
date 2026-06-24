@@ -1,41 +1,35 @@
-import os
+from flask import Flask, request
 import requests
-from flask import Flask, request, Response
+import urllib.parse
 
 app = Flask(__name__)
 
-# שליפת מפתח ה-API מהגדרות השרת ב-Render
-YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
-
-@app.route("/search")
-def search_youtube():
-    # קבלת הטקסט שהמשתמש הקליד בטלפון (למשל חיפוש לפי מספרים או שם)
-    query = request.args.get("q", "")
+@app.route('/search', methods=['GET', 'POST'])
+def search():
+    # קבלת הטקסט שהמשתמש הקיש בטלפון
+    query = request.args.get('search', '') or request.form.get('search', '')
+    
     if not query:
-        return Response("ERR: No query provided", mimetype="text/plain")
+        # אם המשתמש לא הקיש כלום, נבקש מימות המשיח להקריא הודעה ולקלוט קלט
+        return "read=t-נא הקש את שם השיר או הזמר לחיפוש ולאחריו סולמית&mode=recording&max=50"
 
-    url = "https://www.googleapis.com/youtube/v3/search"
-    params = {
-        "part": "snippet",
-        "q": query,
-        "maxResults": 1,
-        "type": "video",
-        "key": YOUTUBE_API_KEY
-    }
-
+    # ביצוע החיפוש ביוטיוב (נשתמש בחיפוש חופשי ללא מפתח בשלב זה)
+    search_url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(query)}"
     try:
-        response = requests.get(url, params=params).json()
-        items = response.get("items", [])
-        if not items:
-            return Response("id=none\ntitle=No video found", mimetype="text/plain")
-
-        video_id = items[0]["id"]["videoId"]
-        video_title = items[0]["snippet"]["title"]
-
-        # החזרת תשובה במבנה פשוט שימות המשיח יודעת לקרוא
-        return Response(f"id={video_id}\ntitle={video_title}", mimetype="text/plain")
+        response = requests.get(search_url, headers={"User-Agent": "Mozilla/5.0"})
+        html = response.text
+        # חילוץ ה-ID הראשון של הסרטון מהתוצאות
+        start_idx = html.find('/watch?v=')
+        if start_idx != -1:
+            video_id = html[start_idx+9:start_idx+20]
+            
+            # כאן אנחנו מחזירים לימות המשיח פקודה להשמיע את הסרטון או לעבור לשלוחה הבאה
+            # בשלב זה נגיד לה להקריא את ה-ID שמצאנו כדי לראות שזה עובד
+            return f"read=t-נמצא סרטון. מזהה הסרטון הוא {video_id}&id_list={video_id}"
     except Exception as e:
-        return Response(f"ERR: {str(e)}", mimetype="text/plain")
+        return "read=t-אירעה שגיאה במהלך החיפוש"
+        
+    return "read=t-לא נמצאו תוצאות, נסה שנית"
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=10000)
